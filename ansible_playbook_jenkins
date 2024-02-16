@@ -1,0 +1,85 @@
+---
+- name: Install and Configure Jenkins
+  hosts: web #node name
+  become: yes
+  tasks:
+    - name: Update apt package cache
+      apt:
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+
+    - name: Install Java (OpenJDK)
+      apt:
+        name: openjdk-11-jdk
+        state: present, 
+      when: ansible_os_family == 'Debian'
+
+    - name: Install Java (OpenJDK)
+      yum:
+        name: java-11-openjdk
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+    - name: Add Jenkins Repository Key
+      apt_key:
+        url: https://pkg.jenkins.io/debian/jenkins.io-2023.key
+      when: ansible_os_family == 'Debian'
+
+    - name: Add Jenkins Repository
+      apt_repository:
+        repo: deb http://pkg.jenkins.io/debian-stable binary/
+      when: ansible_os_family == 'Debian'
+
+    - name: Add Jenkins Repository
+      yum_repository:
+        name: jenkins
+        baseurl: http://pkg.jenkins.io/redhat-stable/
+        gpgcheck: yes
+        gpgkey: https://pkg.jenkins.io/redhat/jenkins.io.key
+      when: ansible_os_family == 'RedHat'
+
+    - name: Install Jenkins
+      package:
+        name: jenkins
+        state: present
+
+    - name: Start Jenkins service
+      service:
+        name: jenkins
+        state: started
+        enabled: yes
+
+    - name: Wait for Jenkins to start
+      uri:
+        url: http://localhost:8080
+        method: GET
+        return_content: yes
+      register: jenkins_status
+      until: "'Jenkins ver.' in jenkins_status.content"
+      retries: 30
+      delay: 10
+
+    - name: Get Jenkins initial admin password
+      command: cat /var/lib/jenkins/secrets/initialAdminPassword
+      register: jenkins_initial_password
+      no_log: yes
+
+    - name: Display Jenkins initial admin password
+      debug:
+        var: jenkins_initial_password.stdout
+
+    - name: Install recommended plugins
+      jenkins_plugin:
+        name: "{{ item }}"
+        state: latest
+      loop:
+        - git
+        - workflow-aggregator
+        - blueocean
+        - ansible
+        # Add more plugins as needed
+
+    - name: Restart Jenkins service
+      service:
+        name: jenkins
+        state: restarted
